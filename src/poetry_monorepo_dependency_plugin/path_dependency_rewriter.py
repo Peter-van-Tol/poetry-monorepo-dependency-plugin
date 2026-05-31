@@ -2,6 +2,7 @@ import typing
 
 import cleo.io.io
 import cleo.io.outputs.output
+import dunamai
 from poetry.core.pyproject.toml import PyProjectTOML
 from poetry.core.constraints.version import Version
 from poetry.core.packages.dependency import Dependency
@@ -14,6 +15,11 @@ def _validate_pinning_strategy(strategy):
         raise ValueError(f"Invalid version pinning strategy: {strategy}")
 
 
+def _validate_dynamic_versioning_strategy(strategy):
+    if strategy not in ["always", "auto-detect", "never"]:
+        raise ValueError(f"Invalid dynamic versioning strategy: {strategy}")
+
+
 class PathDependencyRewriter:
     """
     Exposes core functionality for gathering a pyproject.toml's path dependencies,
@@ -21,9 +27,11 @@ class PathDependencyRewriter:
     dependency version and replacing the path dependency with its versioned equivalent.
     """
 
-    def __init__(self, version_pinning_strategy):
+    def __init__(self, version_pinning_strategy, dynamic_versioning_strategy):
         _validate_pinning_strategy(version_pinning_strategy)
+        _validate_dynamic_versioning_strategy(dynamic_versioning_strategy)
         self._version_pinning_strategy = version_pinning_strategy
+        self._dynamic_versioning_strategy = dynamic_versioning_strategy
 
     def update_dependency_group(
         self,
@@ -59,7 +67,10 @@ class PathDependencyRewriter:
 
             pinned = self._pin_dependency(pyproject, dependency)
 
+            print(f"Dependency {dependency} pinned to {pinned}")
+
             if dependency is pinned:
+                print(f"Dependency {dependency} did not require pinning, skipping")
                 continue
 
             io.write_line(
@@ -72,7 +83,7 @@ class PathDependencyRewriter:
 
     def _extract_project_info(
         self, pyproject_toml: PyProjectTOML
-    ) -> typing.Tuple[str, str]:
+    ) -> typing.Tuple[str, str, str]:
         """
         Extracts the project name and version from the provided pyproject.toml file.
         Supports both [tool.poetry] and [project] formats as valid sources of metadata.
@@ -86,7 +97,14 @@ class PathDependencyRewriter:
         name = tool_poetry_config.get("name") or project_config.get("name")
         version = tool_poetry_config.get("version") or project_config.get("version")
 
-        return typing.cast(str, name), typing.cast(str, version)
+        build_config = pyproject_toml.data.get("build-system", {})
+        build_backend = build_config.get("build-backend", "")
+
+        return (
+            typing.cast(str, name),
+            typing.cast(str, version),
+            typing.cast(str, build_backend),
+        )
 
     def _pin_dependency(
         self, pyproject: PyProjectTOML, dependency: DirectoryDependency
@@ -116,7 +134,10 @@ class PathDependencyRewriter:
         if not pyproject_toml.is_poetry_project():
             return dependency
 
-        name, version = self._extract_project_info(pyproject_toml)
+        name, version, build_backend = self._extract_project_info(pyproject_toml)
+        if self._dynamic_versioning_strategy == "always" or (self._dynamic_versioning_strategy == "auto-detect" and build_backend == "poetry_dynamic_versioning.backend"):
+            version = dunamai.Version.from_any_vcs().serialize()
+        
         pinned_version = version
         if self._version_pinning_strategy == "semver":
             pinned_version = f"^{version}"
@@ -129,6 +150,8 @@ class PathDependencyRewriter:
                     dev=None, pre=None
                 ).next_patch()
                 pinned_version = f">={version},<{next_patch_version}"
+
+        print(f"Pinning {name} to version {version}")
 
         new_dependency = Dependency(
             name,
