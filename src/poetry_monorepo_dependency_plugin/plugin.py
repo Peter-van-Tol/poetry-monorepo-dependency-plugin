@@ -39,6 +39,25 @@ patch version (i.e. '>=1.2.3.dev,<1.2.4')
 If a release version (i.e. '1.2.3'), 'exact' is applied (i.e. '=1.2.3').   
 """
 
+_dynamic_versioning_strategy = option(
+    "dynamic-versioning-strategy",
+    None,
+    "Strategy to use for determining whether to pin path dependencies to static versions from "
+    "pyproject.toml or dynamically versions based on git-tags. Valid options aree include "
+    "'always', 'auto-detect', and 'never', with the default being 'auto-detect'. ",
+    flag=False,
+    default="auto-detect",
+)
+"""
+Strategy to use for determining whether to pin path dependencies to static versions from
+pyproject.toml or dynamically resolved versions from `poetry-dynamic-versioning`. Valid
+options include 'always', 'auto-detect', and 'never', with the default being 'auto-detect'.
+If set to 'always', path dependencies will always be pinned to dynamically resolved versions.
+If set to 'auto-detect', path dependencies will be pinned to dynamically resolved versions
+only if their build backend is detected as `poetry-dynamic-versioning`. If set to 'never',
+path dependencies will always be pinned to static versions from pyproject.toml.
+"""
+
 
 class BuildWithVersionedPathDepsCommand(BuildCommand):
     name = "build-rewrite-path-deps"
@@ -47,11 +66,12 @@ class BuildWithVersionedPathDepsCommand(BuildCommand):
         "other Poetry projects are re-written as versioned package dependencies that are "
         "resolvable via a private package repository source"
     )
-    options = [*BuildCommand.options, _version_pinning_strategy]
+    options = [*BuildCommand.options, _version_pinning_strategy, _dynamic_versioning_strategy]
 
     def handle(self) -> int:
         path_dependency_writer = PathDependencyRewriter(
-            self.option("version-pinning-strategy")
+            self.option("version-pinning-strategy"),
+            self.option("dynamic-versioning-strategy")
         )
         path_dependency_writer.update_dependency_group(
             self.io, self.poetry.pyproject, self.poetry.package.dependency_group("main")
@@ -66,11 +86,12 @@ class PublishWithVersionedPathDepsCommand(PublishCommand):
         "in which path dependencies to other Poetry projects are re-written as versioned package "
         "dependencies that are resolvable via a private package repository source"
     )
-    options = [*PublishCommand.options, _version_pinning_strategy]
+    options = [*PublishCommand.options, _version_pinning_strategy, _dynamic_versioning_strategy]
 
     def handle(self) -> int:
         path_dependency_writer = PathDependencyRewriter(
-            self.option("version-pinning-strategy")
+            self.option("version-pinning-strategy"),
+            self.option("dynamic-versioning-strategy"),
         )
         path_dependency_writer.update_dependency_group(
             self.io, self.poetry.pyproject, self.poetry.package.dependency_group("main")
@@ -281,7 +302,8 @@ class MonorepoDependencyPlugin(poetry.plugins.application_plugin.ApplicationPlug
             )
         else:
             path_dependency_writer = PathDependencyRewriter(
-                self.plugin_config["version-pinning-strategy"]
+                self.plugin_config["version-pinning-strategy"],
+                self.plugin_config["dynamic-versioning-strategy"],
             )
             path_dependency_writer.update_dependency_group(
                 event.io,
@@ -301,6 +323,7 @@ def _default_plugin_config() -> Mapping:
             "poetry-monorepo-dependency-plugin": {
                 "enable": False,
                 "version-pinning-strategy": "mixed",
+                "dynamic-versioning-strategy": "auto-detect",
             }
         }
     }
