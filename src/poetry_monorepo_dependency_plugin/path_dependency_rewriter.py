@@ -67,10 +67,7 @@ class PathDependencyRewriter:
 
             pinned = self._pin_dependency(pyproject, dependency)
 
-            print(f"Dependency {dependency} pinned to {pinned}")
-
             if dependency is pinned:
-                print(f"Dependency {dependency} did not require pinning, skipping")
                 continue
 
             io.write_line(
