@@ -133,7 +133,7 @@ class PathDependencyRewriter:
 
         name, version, build_backend = self._extract_project_info(pyproject_toml)
         if self._dynamic_versioning_strategy == "always" or (self._dynamic_versioning_strategy == "auto-detect" and build_backend == "poetry_dynamic_versioning.backend"):
-            version = dunamai.Version.from_any_vcs().serialize()
+            version = dunamai.Version.from_any_vcs().serialize(metadata=False)
         
         pinned_version = version
         if self._version_pinning_strategy == "semver":
